@@ -1,0 +1,327 @@
+{
+  "name": "generate-variant-core",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "item_id", "type": "number" },
+            { "name": "topic", "type": "string" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "groqCopy",
+      "name": "Groq - Generate Copy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [260, -120],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.3-70b-versatile\", messages: [{ role: \"user\", content: \"Write a short, engaging social media caption (2-3 sentences, include 2-3 relevant hashtags) about: \" + $json.topic }], max_tokens: 300 }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "ZSQn19Hljb3FWaWh", "name": "Groq API (header auth)" }
+      }
+    },
+    {
+      "id": "ollamaCopy",
+      "name": "Ollama - Generate Copy (fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [520, -40],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama3.1:8b\", prompt: \"Write a short, engaging social media caption (2-3 sentences, include 2-3 relevant hashtags) about: \" + $json.topic, stream: false }) }}",
+        "options": { "timeout": 60000 }
+      }
+    },
+    {
+      "id": "groqCopyReady",
+      "name": "Groq Copy Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [520, -200],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "c1", "name": "copy_text", "type": "string", "value": "={{ $json.choices[0].message.content }}" },
+            { "id": "c2", "name": "text_source", "type": "string", "value": "groq" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ollamaCopyReady",
+      "name": "Ollama Copy Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [780, -40],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "c1", "name": "copy_text", "type": "string", "value": "={{ $json.response }}" },
+            { "id": "c2", "name": "text_source", "type": "string", "value": "ollama" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pollinationsImage",
+      "name": "Pollinations - Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [260, 160],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://image.pollinations.ai/prompt/' + encodeURIComponent($json.topic) + '?width=1024&height=1024&nologo=true' }}",
+        "authentication": "none",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "hfImage",
+      "name": "HuggingFace - Generate Image (fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [520, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.topic }) }}",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } },
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "hWFXq0LPy11h4V9A", "name": "HuggingFace API (header auth)" }
+      }
+    },
+    {
+      "id": "pollinationsImageReady",
+      "name": "Pollinations Image Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [520, 100],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "i1", "name": "image_source", "type": "string", "value": "pollinations" }
+          ]
+        },
+        "options": { "includeBinary": true }
+      }
+    },
+    {
+      "id": "hfImageReady",
+      "name": "HF Image Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [780, 240],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "i1", "name": "image_source", "type": "string", "value": "huggingface" }
+          ]
+        },
+        "options": { "includeBinary": true }
+      }
+    },
+    {
+      "id": "mergeTextImage",
+      "name": "Combine Text + Image",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1040, 0],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "buildFilename",
+      "name": "Build Filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.item;\nconst filename = `${item.json.item_id}-${Date.now()}.png`;\nreturn [{ json: { ...item.json, image_filename: filename }, binary: item.binary }];"
+      }
+    },
+    {
+      "id": "storeImage",
+      "name": "Store Image via Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1480, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://dashboard:5000/internal/store-image",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formData", "name": "filename", "value": "={{ $json.image_filename }}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "RvDB3LJS7LrMwKXs", "name": "Pipeline Shared Token" }
+      }
+    },
+    {
+      "id": "insertVariant",
+      "name": "Insert Variant",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1700, 0],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO variants (item_id, attempt_no, copy_text, image_path, image_source, text_source) VALUES ($1, COALESCE((SELECT MAX(attempt_no) FROM variants WHERE item_id = $1), 0) + 1, $2, $3, $4, $5) RETURNING id, attempt_no",
+        "options": {
+          "queryReplacement": "={{ [ $('Build Filename').item.json.item_id, $('Build Filename').item.json.copy_text, $json.image_filename, $('Build Filename').item.json.image_source, $('Build Filename').item.json.text_source ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "updateItemVariant",
+      "name": "Update Item Active Variant",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1920, 0],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET active_variant_id = $1, updated_at = now() WHERE id = $2",
+        "options": {
+          "queryReplacement": "={{ [ $json.id, $('Build Filename').item.json.item_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "setOutput",
+      "name": "Set Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2140, 0],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            { "id": "o1", "name": "item_id", "type": "number", "value": "={{ $('Build Filename').item.json.item_id }}" },
+            { "id": "o2", "name": "variant_id", "type": "number", "value": "={{ $('Insert Variant').item.json.id }}" },
+            { "id": "o3", "name": "attempt_no", "type": "number", "value": "={{ $('Insert Variant').item.json.attempt_no }}" }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[
+        { "node": "Groq - Generate Copy", "type": "main", "index": 0 },
+        { "node": "Pollinations - Generate Image", "type": "main", "index": 0 }
+      ]]
+    },
+    "Groq - Generate Copy": {
+      "main": [
+        [{ "node": "Groq Copy Ready", "type": "main", "index": 0 }],
+        [{ "node": "Ollama - Generate Copy (fallback)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ollama - Generate Copy (fallback)": {
+      "main": [[{ "node": "Ollama Copy Ready", "type": "main", "index": 0 }]]
+    },
+    "Groq Copy Ready": {
+      "main": [[{ "node": "Combine Text + Image", "type": "main", "index": 0 }]]
+    },
+    "Ollama Copy Ready": {
+      "main": [[{ "node": "Combine Text + Image", "type": "main", "index": 0 }]]
+    },
+    "Pollinations - Generate Image": {
+      "main": [
+        [{ "node": "Pollinations Image Ready", "type": "main", "index": 0 }],
+        [{ "node": "HuggingFace - Generate Image (fallback)", "type": "main", "index": 0 }]
+      ]
+    },
+    "HuggingFace - Generate Image (fallback)": {
+      "main": [[{ "node": "HF Image Ready", "type": "main", "index": 0 }]]
+    },
+    "Pollinations Image Ready": {
+      "main": [[{ "node": "Combine Text + Image", "type": "main", "index": 1 }]]
+    },
+    "HF Image Ready": {
+      "main": [[{ "node": "Combine Text + Image", "type": "main", "index": 1 }]]
+    },
+    "Combine Text + Image": {
+      "main": [[{ "node": "Build Filename", "type": "main", "index": 0 }]]
+    },
+    "Build Filename": {
+      "main": [[{ "node": "Store Image via Dashboard", "type": "main", "index": 0 }]]
+    },
+    "Store Image via Dashboard": {
+      "main": [[{ "node": "Insert Variant", "type": "main", "index": 0 }]]
+    },
+    "Insert Variant": {
+      "main": [[{ "node": "Update Item Active Variant", "type": "main", "index": 0 }]]
+    },
+    "Update Item Active Variant": {
+      "main": [[{ "node": "Set Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

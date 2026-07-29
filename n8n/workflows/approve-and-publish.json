@@ -1,0 +1,500 @@
+{
+  "name": "approve-and-publish",
+  "nodes": [
+    {
+      "id": "webhookApprove",
+      "name": "Webhook - approve",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "parameters": {
+        "path": "approve",
+        "httpMethod": "POST",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode"
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "RvDB3LJS7LrMwKXs", "name": "Pipeline Shared Token" }
+      }
+    },
+    {
+      "id": "approveVariant",
+      "name": "Approve Variant (guarded)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [260, 0],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE variants SET decision = 'approved', decided_at = now() WHERE id = $1 AND decision = 'pending' RETURNING id, item_id",
+        "options": {
+          "queryReplacement": "={{ [ $json.body.variant_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "wasPending",
+      "name": "Was Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [480, 0],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.id ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        }
+      }
+    },
+    {
+      "id": "respondConflict",
+      "name": "Respond - Already Decided",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [700, 120],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'error', message: 'variant already decided' } }}",
+        "options": { "responseCode": 409 }
+      }
+    },
+    {
+      "id": "setItemPublishing",
+      "name": "Set Item Publishing",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [700, -100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET status = 'publishing', updated_at = now() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $('Approve Variant (guarded)').item.json.item_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "getVariantContent",
+      "name": "Get Variant Content",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, -100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT image_path, copy_text FROM variants WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $('Approve Variant (guarded)').item.json.id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "fetchImageBytes",
+      "name": "Fetch Image Bytes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1140, -100],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://dashboard:5000/images/' + $json.image_path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } },
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "RvDB3LJS7LrMwKXs", "name": "Pipeline Shared Token" }
+      }
+    },
+    {
+      "id": "configNode",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1360, -100],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "cfg1", "name": "upload_post_profile", "type": "string", "value": "REPLACE_WITH_UPLOAD_POST_PROFILE" }
+          ]
+        },
+        "options": { "includeBinary": true }
+      }
+    },
+    {
+      "id": "uploadTiktok",
+      "name": "Upload-Post - TikTok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1600, -280],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formData", "name": "user", "value": "={{ $json.upload_post_profile }}" },
+            { "parameterType": "formData", "name": "platform[]", "value": "tiktok" },
+            { "parameterType": "formData", "name": "caption", "value": "={{ $json.copy_text }}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "hxTDgec3sPjBP6Gr", "name": "Upload-Post API (header auth)" }
+      }
+    },
+    {
+      "id": "uploadX",
+      "name": "Upload-Post - X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1600, -140],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formData", "name": "user", "value": "={{ $json.upload_post_profile }}" },
+            { "parameterType": "formData", "name": "platform[]", "value": "x" },
+            { "parameterType": "formData", "name": "caption", "value": "={{ $json.copy_text }}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "hxTDgec3sPjBP6Gr", "name": "Upload-Post API (header auth)" }
+      }
+    },
+    {
+      "id": "uploadFacebook",
+      "name": "Upload-Post - Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1600, 0],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formData", "name": "user", "value": "={{ $json.upload_post_profile }}" },
+            { "parameterType": "formData", "name": "platform[]", "value": "facebook" },
+            { "parameterType": "formData", "name": "caption", "value": "={{ $json.copy_text }}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "hxTDgec3sPjBP6Gr", "name": "Upload-Post API (header auth)" }
+      }
+    },
+    {
+      "id": "uploadInstagram",
+      "name": "Upload-Post - Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1600, 140],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formData", "name": "user", "value": "={{ $json.upload_post_profile }}" },
+            { "parameterType": "formData", "name": "platform[]", "value": "instagram" },
+            { "parameterType": "formData", "name": "caption", "value": "={{ $json.copy_text }}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "hxTDgec3sPjBP6Gr", "name": "Upload-Post API (header auth)" }
+      }
+    },
+    {
+      "id": "normalizeTiktok",
+      "name": "Normalize - TikTok",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1840, -280],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "n1", "name": "network", "type": "string", "value": "tiktok" },
+            { "id": "n2", "name": "pub_status", "type": "string", "value": "={{ $json.error ? 'failed' : 'success' }}" },
+            { "id": "n3", "name": "response_meta", "type": "string", "value": "={{ $json.error ? 'null' : JSON.stringify($json) }}" },
+            { "id": "n4", "name": "error_message", "type": "string", "value": "={{ $json.error ? $json.error.message : null }}" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "normalizeX",
+      "name": "Normalize - X",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1840, -140],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "n1", "name": "network", "type": "string", "value": "x" },
+            { "id": "n2", "name": "pub_status", "type": "string", "value": "={{ $json.error ? 'failed' : 'success' }}" },
+            { "id": "n3", "name": "response_meta", "type": "string", "value": "={{ $json.error ? 'null' : JSON.stringify($json) }}" },
+            { "id": "n4", "name": "error_message", "type": "string", "value": "={{ $json.error ? $json.error.message : null }}" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "normalizeFacebook",
+      "name": "Normalize - Facebook",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1840, 0],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "n1", "name": "network", "type": "string", "value": "facebook" },
+            { "id": "n2", "name": "pub_status", "type": "string", "value": "={{ $json.error ? 'failed' : 'success' }}" },
+            { "id": "n3", "name": "response_meta", "type": "string", "value": "={{ $json.error ? 'null' : JSON.stringify($json) }}" },
+            { "id": "n4", "name": "error_message", "type": "string", "value": "={{ $json.error ? $json.error.message : null }}" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "normalizeInstagram",
+      "name": "Normalize - Instagram",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1840, 140],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "n1", "name": "network", "type": "string", "value": "instagram" },
+            { "id": "n2", "name": "pub_status", "type": "string", "value": "={{ $json.error ? 'failed' : 'success' }}" },
+            { "id": "n3", "name": "response_meta", "type": "string", "value": "={{ $json.error ? 'null' : JSON.stringify($json) }}" },
+            { "id": "n4", "name": "error_message", "type": "string", "value": "={{ $json.error ? $json.error.message : null }}" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "recordPublication",
+      "name": "Record Publication",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2060, -70],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO publications (variant_id, network, status, response_meta, error_message) VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [ $('Approve Variant (guarded)').item.json.id, $json.network, $json.pub_status, $json.response_meta, $json.error_message ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "computeRollup",
+      "name": "Compute Rollup Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2280, -70],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $('Normalize - TikTok').all().concat($('Normalize - X').all(), $('Normalize - Facebook').all(), $('Normalize - Instagram').all());\nconst successCount = items.filter(i => i.json.pub_status === 'success').length;\nlet rollup;\nif (successCount === items.length) rollup = 'published';\nelse if (successCount === 0) rollup = 'failed';\nelse rollup = 'partial';\nreturn [{ json: { rollup_status: rollup, success_count: successCount, total: items.length } }];"
+      }
+    },
+    {
+      "id": "updateItemRollup",
+      "name": "Update Item Rollup Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2500, -70],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET status = $1, updated_at = now() WHERE id = $2 RETURNING sheet_row_id",
+        "options": {
+          "queryReplacement": "={{ [ $json.rollup_status, $('Approve Variant (guarded)').item.json.item_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "updateSheetStatus",
+      "name": "Update Sheet Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2720, -70],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "authentication": "oAuth2",
+        "documentId": { "__rl": true, "mode": "list", "value": "", "cachedResultName": "Content Pipeline Queue" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "", "cachedResultName": "Sheet1" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["row_id"],
+          "value": {
+            "row_id": "={{ $json.sheet_row_id }}",
+            "status": "={{ $('Compute Rollup Status').item.json.rollup_status }}"
+          },
+          "schema": [
+            { "id": "row_id", "displayName": "row_id", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "topic", "displayName": "topic", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "REPLACE_ME", "name": "Google Sheets account" }
+      }
+    },
+    {
+      "id": "respondOk",
+      "name": "Respond - OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [2940, -70],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: $('Compute Rollup Status').item.json.rollup_status, success_count: $('Compute Rollup Status').item.json.success_count, total: $('Compute Rollup Status').item.json.total } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - approve": {
+      "main": [[{ "node": "Approve Variant (guarded)", "type": "main", "index": 0 }]]
+    },
+    "Approve Variant (guarded)": {
+      "main": [[{ "node": "Was Pending?", "type": "main", "index": 0 }]]
+    },
+    "Was Pending?": {
+      "main": [
+        [{ "node": "Set Item Publishing", "type": "main", "index": 0 }],
+        [{ "node": "Respond - Already Decided", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Item Publishing": {
+      "main": [[{ "node": "Get Variant Content", "type": "main", "index": 0 }]]
+    },
+    "Get Variant Content": {
+      "main": [[{ "node": "Fetch Image Bytes", "type": "main", "index": 0 }]]
+    },
+    "Fetch Image Bytes": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Config": {
+      "main": [[
+        { "node": "Upload-Post - TikTok", "type": "main", "index": 0 },
+        { "node": "Upload-Post - X", "type": "main", "index": 0 },
+        { "node": "Upload-Post - Facebook", "type": "main", "index": 0 },
+        { "node": "Upload-Post - Instagram", "type": "main", "index": 0 }
+      ]]
+    },
+    "Upload-Post - TikTok": {
+      "main": [
+        [{ "node": "Normalize - TikTok", "type": "main", "index": 0 }],
+        [{ "node": "Normalize - TikTok", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload-Post - X": {
+      "main": [
+        [{ "node": "Normalize - X", "type": "main", "index": 0 }],
+        [{ "node": "Normalize - X", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload-Post - Facebook": {
+      "main": [
+        [{ "node": "Normalize - Facebook", "type": "main", "index": 0 }],
+        [{ "node": "Normalize - Facebook", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload-Post - Instagram": {
+      "main": [
+        [{ "node": "Normalize - Instagram", "type": "main", "index": 0 }],
+        [{ "node": "Normalize - Instagram", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize - TikTok": {
+      "main": [[{ "node": "Record Publication", "type": "main", "index": 0 }]]
+    },
+    "Normalize - X": {
+      "main": [[{ "node": "Record Publication", "type": "main", "index": 0 }]]
+    },
+    "Normalize - Facebook": {
+      "main": [[{ "node": "Record Publication", "type": "main", "index": 0 }]]
+    },
+    "Normalize - Instagram": {
+      "main": [[{ "node": "Record Publication", "type": "main", "index": 0 }]]
+    },
+    "Record Publication": {
+      "main": [[{ "node": "Compute Rollup Status", "type": "main", "index": 0 }]]
+    },
+    "Compute Rollup Status": {
+      "main": [[{ "node": "Update Item Rollup Status", "type": "main", "index": 0 }]]
+    },
+    "Update Item Rollup Status": {
+      "main": [[{ "node": "Update Sheet Status", "type": "main", "index": 0 }]]
+    },
+    "Update Sheet Status": {
+      "main": [[{ "node": "Respond - OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

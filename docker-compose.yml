@@ -1,0 +1,81 @@
+version: "3.8"
+
+networks:
+  pipeline_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:
+  image_cache:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - pipeline_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=${N8N_PORT}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - CRON_ENABLED=${CRON_ENABLED}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+      - UPLOAD_POST_API_KEY=${UPLOAD_POST_API_KEY}
+      - PIPELINE_SHARED_TOKEN=${PIPELINE_SHARED_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - image_cache:/home/node/image_cache
+    networks:
+      - pipeline_net
+
+  dashboard:
+    build:
+      context: ./dashboard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678
+      - PIPELINE_SHARED_TOKEN=${PIPELINE_SHARED_TOKEN}
+      - DASHBOARD_USER=${DASHBOARD_USER}
+      - DASHBOARD_PASS=${DASHBOARD_PASS}
+    volumes:
+      - image_cache:/app/image_cache
+    networks:
+      - pipeline_net

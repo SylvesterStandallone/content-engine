@@ -1,0 +1,15 @@
+# Normalize to LF everywhere. These files are mounted and copied into Linux
+# containers; CRLF in a shell script's shebang fails as "no such file or directory".
+* text=auto eol=lf
+
+# Binary assets — never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.mov binary
+*.ttf binary
+*.woff binary
+*.woff2 binary

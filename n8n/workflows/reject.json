@@ -1,0 +1,165 @@
+{
+  "name": "reject",
+  "nodes": [
+    {
+      "id": "webhookReject",
+      "name": "Webhook - reject",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "parameters": {
+        "path": "reject",
+        "httpMethod": "POST",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode"
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "RvDB3LJS7LrMwKXs", "name": "Pipeline Shared Token" }
+      }
+    },
+    {
+      "id": "rejectVariant",
+      "name": "Reject Variant (guarded)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [260, 0],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE variants SET decision = 'rejected', decided_at = now() WHERE id = $1 AND decision = 'pending' RETURNING id, item_id",
+        "options": {
+          "queryReplacement": "={{ [ $json.body.variant_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "wasPending",
+      "name": "Was Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [480, 0],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.id ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        }
+      }
+    },
+    {
+      "id": "setItemGenerating",
+      "name": "Set Item Generating",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [700, -100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET status = 'generating', updated_at = now() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $('Reject Variant (guarded)').item.json.item_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "getItemTopic",
+      "name": "Get Item Topic",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, -100],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, topic FROM items WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $('Reject Variant (guarded)').item.json.item_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "MrqOoeDDMzoi2eHj", "name": "Postgres - content_engine" }
+      }
+    },
+    {
+      "id": "generateVariant",
+      "name": "Generate Variant",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1140, -100],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "Htj6z2JKACbMHdKD" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "item_id": "={{ $json.id }}",
+            "topic": "={{ $json.topic }}"
+          },
+          "schema": [
+            { "id": "item_id", "displayName": "item_id", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": true },
+            { "id": "topic", "displayName": "topic", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false }
+          ]
+        },
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+    {
+      "id": "respondOk",
+      "name": "Respond - OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1360, -100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', item_id: $json.item_id, variant_id: $json.variant_id } }}"
+      }
+    },
+    {
+      "id": "respondConflict",
+      "name": "Respond - Already Decided",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [700, 100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'error', message: 'variant already decided' } }}",
+        "options": { "responseCode": 409 }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - reject": {
+      "main": [[{ "node": "Reject Variant (guarded)", "type": "main", "index": 0 }]]
+    },
+    "Reject Variant (guarded)": {
+      "main": [[{ "node": "Was Pending?", "type": "main", "index": 0 }]]
+    },
+    "Was Pending?": {
+      "main": [
+        [{ "node": "Set Item Generating", "type": "main", "index": 0 }],
+        [{ "node": "Respond - Already Decided", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Item Generating": {
+      "main": [[{ "node": "Get Item Topic", "type": "main", "index": 0 }]]
+    },
+    "Get Item Topic": {
+      "main": [[{ "node": "Generate Variant", "type": "main", "index": 0 }]]
+    },
+    "Generate Variant": {
+      "main": [[{ "node": "Respond - OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
