@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Content Pipeline{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --card-hover: #212533;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --muted: #9ca3af;
+      --accent: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text);
+      -webkit-text-size-adjust: 100%;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .shell { max-width: 900px; margin: 0 auto; padding: 1rem; }
+
+    /* ── top bar ─────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; gap: 0.75rem;
+      flex-wrap: wrap; margin-bottom: 1rem;
+    }
+    .brand { font-size: 1.1rem; font-weight: 700; margin-right: auto; }
+    .nav { display: flex; gap: 0.25rem; }
+    .nav a {
+      padding: 0.4rem 0.75rem; border-radius: 8px; font-size: 0.85rem;
+      font-weight: 600; color: var(--muted); border: 1px solid transparent;
+    }
+    .nav a.on { background: var(--card); color: var(--text); border-color: var(--border); }
+    .count-pill {
+      background: var(--accent); color: #fff; border-radius: 9999px;
+      padding: 1px 7px; font-size: 0.7rem; margin-left: 0.35rem;
+    }
+
+    /* ── filters ─────────────────────────────────────────── */
+    .filters { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .chip {
+      padding: 0.35rem 0.8rem; border-radius: 9999px; font-size: 0.8rem;
+      font-weight: 600; background: var(--card); border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── generic card ────────────────────────────────────── */
+    .grid {
+      display: grid; gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem;
+      display: flex; flex-direction: column; gap: 0.75rem;
+    }
+    .card-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .topic { font-weight: 600; overflow-wrap: anywhere; }
+    .badge {
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 9999px;
+      text-transform: uppercase; font-weight: 700; white-space: nowrap;
+    }
+    .badge-review { background: var(--accent); color: #fff; }
+    .badge-published { background: var(--green); color: #000; }
+    .badge-partial { background: var(--yellow); color: #000; }
+    .badge-failed { background: var(--red); color: #fff; }
+    .badge-generating { background: var(--border); color: var(--muted); }
+    .kind-tag {
+      font-size: 0.7rem; font-weight: 700; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+    }
+    .media-wrap { border-radius: 8px; overflow: hidden; background: #000; }
+    .media-wrap img, .media-wrap video { width: 100%; display: block; }
+    .copy-text {
+      color: var(--muted); font-size: 0.875rem; line-height: 1.5;
+      white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .meta { font-size: 0.75rem; color: var(--muted); }
+    .actions { display: flex; gap: 0.5rem; margin-top: auto; }
+    .btn {
+      flex: 1; padding: 0.6rem; border: none; border-radius: 8px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-approve { background: var(--green); color: #000; }
+    .btn-reject { background: var(--red); color: #fff; }
+    .pubs { font-size: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .pub-success { color: var(--green); }
+    .pub-failed { color: var(--red); }
+    .pub-pending { color: var(--muted); }
+    .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <span class="brand">Content Pipeline</span>
+      <nav class="nav">
+        <a href="{{ url_for('index') }}" class="{{ 'on' if active_nav == 'calendar' }}">Calendario</a>
+        <a href="{{ url_for('queue') }}" class="{{ 'on' if active_nav == 'queue' }}">Cola{% if pending_review %}<span class="count-pill">{{ pending_review }}</span>{% endif %}</a>
+      </nav>
+    </div>
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_card.html" import content_card %}
+{% set active_nav = 'calendar' %}
+{% block title %}{{ day_label }} — Content Pipeline{% endblock %}
+
+{% block head_extra %}
+<style>
+  .day-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+  .day-label { font-size: 1rem; font-weight: 700; margin-right: auto; overflow-wrap: anywhere; }
+  .day-nav {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 0.35rem 0.7rem; font-weight: 700; font-size: 0.9rem;
+  }
+  .back { font-size: 0.8rem; color: var(--muted); display: inline-block; margin-bottom: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="back" href="{{ url_for('index', year=the_day.year, month=the_day.month, kind=kind) }}">← Volver al calendario</a>
+
+<div class="filters">
+  <a class="chip {{ 'on' if not kind }}" href="{{ url_for('day_view', day=the_day.isoformat()) }}">Todo</a>
+  <a class="chip {{ 'on' if kind == 'image' }}" href="{{ url_for('day_view', day=the_day.isoformat(), kind='image') }}">Imagen</a>
+  <a class="chip {{ 'on' if kind == 'video' }}" href="{{ url_for('day_view', day=the_day.isoformat(), kind='video') }}">Vídeo</a>
+</div>
+
+<div class="day-bar">
+  <span class="day-label">{{ day_label }}</span>
+  <a class="day-nav" href="{{ url_for('day_view', day=prev_day.isoformat(), kind=kind) }}">←</a>
+  <a class="day-nav" href="{{ url_for('day_view', day=next_day.isoformat(), kind=kind) }}">→</a>
+</div>
+
+{% if not items %}
+  <div class="empty">Nada este día{% if kind %} para este tipo{% endif %}.</div>
+{% else %}
+  <div class="grid">
+    {% for item in items %}
+      {{ content_card(item, pub_map, with_actions=False) }}
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

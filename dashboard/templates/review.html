@@ -1,130 +1,46 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Content Pipeline — Review</title>
-  <style>
-    :root {
-      --bg: #0f1117;
-      --card: #1a1d27;
-      --border: #2a2d3a;
-      --text: #e4e4e7;
-      --muted: #9ca3af;
-      --accent: #6366f1;
-      --green: #22c55e;
-      --red: #ef4444;
-      --yellow: #eab308;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 1rem; }
-    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
-    .queue { display: flex; flex-direction: column; gap: 1rem; max-width: 640px; margin: 0 auto; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-    .topic { font-weight: 600; }
-    .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase; font-weight: 600; }
-    .badge-review { background: var(--accent); color: #fff; }
-    .badge-published { background: var(--green); color: #000; }
-    .badge-partial { background: var(--yellow); color: #000; }
-    .badge-failed { background: var(--red); color: #fff; }
-    .badge-generating { background: var(--border); color: var(--muted); }
-    .image-wrap { margin-bottom: 0.75rem; border-radius: 8px; overflow: hidden; }
-    .image-wrap img { width: 100%; display: block; }
-    .copy-text { color: var(--muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 0.75rem; white-space: pre-wrap; }
-    .meta { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.75rem; }
-    .actions { display: flex; gap: 0.5rem; }
-    .btn { flex: 1; padding: 0.6rem; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-approve { background: var(--green); color: #000; }
-    .btn-reject { background: var(--red); color: #fff; }
-    .pubs { font-size: 0.75rem; margin-top: 0.5rem; }
-    .pubs span { margin-right: 0.5rem; }
-    .pub-success { color: var(--green); }
-    .pub-failed { color: var(--red); }
-    .pub-pending { color: var(--muted); }
-    .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; }
-  </style>
-</head>
-<body>
-  <div class="queue">
-    <h1>Content Pipeline</h1>
-    {% if not items %}
-      <div class="empty">No items in the queue.</div>
-    {% endif %}
+{% extends "base.html" %}
+{% from "_card.html" import content_card %}
+{% set active_nav = 'queue' %}
+{% block title %}Cola — Content Pipeline{% endblock %}
+
+{% block content %}
+<div class="filters">
+  <a class="chip {{ 'on' if not kind }}" href="{{ url_for('queue') }}">Todo</a>
+  <a class="chip {{ 'on' if kind == 'image' }}" href="{{ url_for('queue', kind='image') }}">Imagen</a>
+  <a class="chip {{ 'on' if kind == 'video' }}" href="{{ url_for('queue', kind='video') }}">Vídeo</a>
+</div>
+
+{% if not items %}
+  <div class="empty">No hay elementos en la cola.</div>
+{% else %}
+  <div class="grid">
     {% for item in items %}
-    <div class="card" id="card-{{ item.item_id }}">
-      <div class="card-header">
-        <span class="topic">{{ item.topic }}</span>
-        {% if item.item_status == 'awaiting_review' %}
-          <span class="badge badge-review">Review</span>
-        {% elif item.item_status == 'published' %}
-          <span class="badge badge-published">Published</span>
-        {% elif item.item_status == 'partial' %}
-          <span class="badge badge-partial">Partial</span>
-        {% elif item.item_status == 'failed' %}
-          <span class="badge badge-failed">Failed</span>
-        {% else %}
-          <span class="badge badge-generating">{{ item.item_status }}</span>
-        {% endif %}
-      </div>
-
-      {% if item.image_path %}
-      <div class="image-wrap">
-        <img src="/images/{{ item.image_path }}" alt="Generated image">
-      </div>
-      {% endif %}
-
-      {% if item.copy_text %}
-      <div class="copy-text">{{ item.copy_text }}</div>
-      {% endif %}
-
-      <div class="meta">
-        Variant #{{ item.attempt_no or '—' }}
-        · Image: {{ item.image_source or '—' }}
-        · Text: {{ item.text_source or '—' }}
-      </div>
-
-      {% if item.item_status == 'awaiting_review' %}
-      <div class="actions">
-        <button class="btn btn-approve" onclick="decide('approve', {{ item.item_id }}, {{ item.variant_id }}, this)">Approve</button>
-        <button class="btn btn-reject" onclick="decide('reject', {{ item.item_id }}, {{ item.variant_id }}, this)">Reject</button>
-      </div>
-      {% endif %}
-
-      {% if item.variant_id and pub_map.get(item.variant_id) %}
-      <div class="pubs">
-        {% for pub in pub_map[item.variant_id] %}
-          <span class="pub-{{ pub.status }}">{{ pub.network }}: {{ pub.status }}</span>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
+      {{ content_card(item, pub_map, with_actions=True) }}
     {% endfor %}
   </div>
+{% endif %}
 
-  <script>
-    async function decide(action, itemId, variantId, btn) {
-      const card = btn.closest('.card');
-      card.querySelectorAll('.btn').forEach(b => b.disabled = true);
-      try {
-        const resp = await fetch(`/api/${action}`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({item_id: itemId, variant_id: variantId})
-        });
-        if (resp.ok) {
-          setTimeout(() => location.reload(), 1500);
-        } else {
-          const data = await resp.json().catch(() => ({}));
-          alert(data.message || `${action} failed (${resp.status})`);
-          card.querySelectorAll('.btn').forEach(b => b.disabled = false);
-        }
-      } catch (e) {
-        alert(`Network error: ${e.message}`);
+<script>
+  async function decide(action, itemId, variantId, btn) {
+    const card = btn.closest('.card');
+    card.querySelectorAll('.btn').forEach(b => b.disabled = true);
+    try {
+      const resp = await fetch(`/api/${action}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({item_id: itemId, variant_id: variantId})
+      });
+      if (resp.ok) {
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.message || `${action} falló (${resp.status})`);
         card.querySelectorAll('.btn').forEach(b => b.disabled = false);
       }
+    } catch (e) {
+      alert(`Error de red: ${e.message}`);
+      card.querySelectorAll('.btn').forEach(b => b.disabled = false);
     }
-  </script>
-</body>
-</html>
+  }
+</script>
+{% endblock %}

@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS variants (
   attempt_no    INTEGER NOT NULL,
   copy_text     TEXT,
   image_path    TEXT,
+  video_path    TEXT,
   image_source  TEXT,
   text_source   TEXT,
   decision      TEXT NOT NULL DEFAULT 'pending',

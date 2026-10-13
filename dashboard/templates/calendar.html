@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% set active_nav = 'calendar' %}
+{% block title %}Calendario — Content Pipeline{% endblock %}
+
+{% block head_extra %}
+<style>
+  .month-bar {
+    display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;
+  }
+  .month-label { font-size: 1rem; font-weight: 700; margin-right: auto; }
+  .month-nav {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 0.35rem 0.7rem; font-weight: 700; font-size: 0.9rem;
+  }
+
+  .cal {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  }
+  .cal-head {
+    text-align: center; font-size: 0.7rem; font-weight: 700;
+    color: var(--muted); padding-bottom: 0.25rem;
+  }
+  .cell {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; min-height: 3.25rem; padding: 0.3rem;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .cell.outside { opacity: 0.35; }
+  .cell.today { border-color: var(--accent); }
+  .cell.has-content:hover { background: var(--card-hover); }
+  .cell-day { font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+  .cell.today .cell-day { color: var(--accent); }
+  .dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: auto; }
+  .dot {
+    font-size: 0.65rem; font-weight: 700; line-height: 1;
+    border-radius: 4px; padding: 2px 4px;
+  }
+  .dot-image { background: rgba(99,102,241,0.25); color: #a5b4fc; }
+  .dot-video { background: rgba(34,197,94,0.2); color: #86efac; }
+
+  /* On phones the grid gets tight — shrink the chrome, keep 7 columns. */
+  @media (max-width: 480px) {
+    .cell { min-height: 2.75rem; padding: 0.2rem; border-radius: 6px; }
+    .cell-day { font-size: 0.65rem; }
+    .dot { font-size: 0.6rem; padding: 1px 3px; }
+  }
+
+  @media (min-width: 640px) {
+    .cell { min-height: 5rem; }
+  }
+
+  .legend {
+    display: flex; gap: 1rem; margin-top: 1rem;
+    font-size: 0.75rem; color: var(--muted);
+  }
+  .legend span { display: flex; align-items: center; gap: 0.35rem; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="filters">
+  <a class="chip {{ 'on' if not kind }}"
+     href="{{ url_for('index', year=this_month.year, month=this_month.month) }}">Todo</a>
+  <a class="chip {{ 'on' if kind == 'image' }}"
+     href="{{ url_for('index', year=this_month.year, month=this_month.month, kind='image') }}">Imagen</a>
+  <a class="chip {{ 'on' if kind == 'video' }}"
+     href="{{ url_for('index', year=this_month.year, month=this_month.month, kind='video') }}">Vídeo</a>
+</div>
+
+<div class="month-bar">
+  <span class="month-label">{{ month_label }}</span>
+  <a class="month-nav" href="{{ url_for('index', year=prev_month.year, month=prev_month.month, kind=kind) }}">←</a>
+  <a class="month-nav" href="{{ url_for('index', year=today.year, month=today.month, kind=kind) }}">Hoy</a>
+  <a class="month-nav" href="{{ url_for('index', year=next_month.year, month=next_month.month, kind=kind) }}">→</a>
+</div>
+
+<div class="cal">
+  {% for name in weekday_names %}
+    <div class="cal-head">{{ name }}</div>
+  {% endfor %}
+
+  {% for week in weeks %}
+    {% for day in week %}
+      {% set c = counts.get(day) %}
+      {% set n_image = c.image if c else 0 %}
+      {% set n_video = c.video if c else 0 %}
+      {% set shown = (n_image if kind == 'image' else (n_video if kind == 'video' else n_image + n_video)) %}
+      {% set classes = [] %}
+      {% if day.month != this_month.month %}{% set _ = classes.append('outside') %}{% endif %}
+      {% if day == today %}{% set _ = classes.append('today') %}{% endif %}
+      {% if shown %}{% set _ = classes.append('has-content') %}{% endif %}
+
+      {% if shown %}
+        <a class="cell {{ classes | join(' ') }}"
+           href="{{ url_for('day_view', day=day.isoformat(), kind=kind) }}">
+          <span class="cell-day">{{ day.day }}</span>
+          <span class="dots">
+            {% if n_image and kind != 'video' %}<span class="dot dot-image">{{ n_image }}</span>{% endif %}
+            {% if n_video and kind != 'image' %}<span class="dot dot-video">{{ n_video }}</span>{% endif %}
+          </span>
+        </a>
+      {% else %}
+        <div class="cell {{ classes | join(' ') }}">
+          <span class="cell-day">{{ day.day }}</span>
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="legend">
+  <span><i class="swatch" style="background:#a5b4fc"></i> Imagen</span>
+  <span><i class="swatch" style="background:#86efac"></i> Vídeo</span>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{# Shared content card. with_actions shows Approve/Reject for items awaiting review. #}
+{% macro content_card(item, pub_map, with_actions=False) %}
+<div class="card" id="card-{{ item.item_id }}">
+  <div class="card-header">
+    <span class="topic">{{ item.topic }}</span>
+    {% if item.item_status == 'awaiting_review' %}
+      <span class="badge badge-review">Revisar</span>
+    {% elif item.item_status == 'published' %}
+      <span class="badge badge-published">Publicado</span>
+    {% elif item.item_status == 'partial' %}
+      <span class="badge badge-partial">Parcial</span>
+    {% elif item.item_status == 'failed' %}
+      <span class="badge badge-failed">Fallido</span>
+    {% else %}
+      <span class="badge badge-generating">{{ item.item_status }}</span>
+    {% endif %}
+  </div>
+
+  {% if item.video_path %}
+    <div class="media-wrap">
+      <video src="/images/{{ item.video_path }}" controls playsinline preload="metadata"></video>
+    </div>
+  {% elif item.image_path %}
+    <div class="media-wrap">
+      <img src="/images/{{ item.image_path }}" alt="Contenido generado" loading="lazy">
+    </div>
+  {% endif %}
+
+  {% if item.copy_text %}
+    <div class="copy-text">{{ item.copy_text }}</div>
+  {% endif %}
+
+  <div class="meta">
+    <span class="kind-tag">{{ 'Vídeo' if item.media_kind == 'video' else 'Imagen' }}</span>
+    · Variante #{{ item.attempt_no or '—' }}
+    · Imagen: {{ item.image_source or '—' }}
+    · Texto: {{ item.text_source or '—' }}
+  </div>
+
+  {% if item.variant_id and pub_map.get(item.variant_id) %}
+    <div class="pubs">
+      {% for pub in pub_map[item.variant_id] %}
+        <span class="pub-{{ pub.status }}">{{ pub.network }}: {{ pub.status }}</span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if with_actions and item.item_status == 'awaiting_review' %}
+    <div class="actions">
+      <button class="btn btn-approve"
+              onclick="decide('approve', {{ item.item_id }}, {{ item.variant_id }}, this)">Aprobar</button>
+      <button class="btn btn-reject"
+              onclick="decide('reject', {{ item.item_id }}, {{ item.variant_id }}, this)">Rechazar</button>
+    </div>
+  {% endif %}
+</div>
+{% endmacro %}
